@@ -2,6 +2,7 @@ const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals: { GoalNear } } = require('mineflayer-pathfinder');
 const { Vec3 } = require('vec3');
 const minecraftData = require('minecraft-data');
+const cmd = require('mineflayer-cmd').plugin;
 
 function createBot() {
     const bot = mineflayer.createBot({
@@ -13,6 +14,7 @@ function createBot() {
 
     const mcData = minecraftData(bot.version);
     bot.loadPlugin(pathfinder);
+    bot.loadPlugin(cmd);
 
     bot.once('spawn', () => {
         console.log('Bot joined the server!');
@@ -20,10 +22,23 @@ function createBot() {
 
         const defaultMove = new Movements(bot, mcData);
         bot.pathfinder.setMovements(defaultMove);
+
+        bot.cmd.registerCommand('composter', async (sender, flags, args) => {
+            const amount = parseInt(args[0]);
+            if (isNaN(amount) || amount <= 0) {
+                bot.chat("Please specify a valid number of carrots.");
+                return;
+            }
+            await manageCarrotsAndCompost(amount);
+        }, 'Manage carrots and compost', 'composter <amount>');
     });
 
     bot.on('chat', async (username, message) => {
         if (username === bot.username) return;
+        if (message.startsWith('!')) {
+            const command = message.substring(1);
+            bot.cmd.run(username, command);
+        }
         console.log(`${username} : ${message}`);
 
         switch (message) {
@@ -242,6 +257,89 @@ function createBot() {
         bot.chat(`Stored ${totalCarrotsStored} carrots into the chest.`);
         await chest.close();
     }
+
+    async function manageCarrotsAndCompost(amount) {
+        // Step 1: Open nearby chests and retrieve carrots
+        const chestBlockId = mcData.blocksByName.chest.id;
+        const chestPositions = bot.findBlocks({
+            matching: chestBlockId,
+            maxDistance: 9,
+            count: 1
+        });
+    
+        if (chestPositions.length === 0) {
+            bot.chat("No nearby chest found to retrieve carrots.");
+            return;
+        }
+    
+        const chestPos = chestPositions[0];
+        const chestBlock = bot.blockAt(chestPos);
+    
+        await bot.pathfinder.goto(new GoalNear(chestPos.x, chestPos.y, chestPos.z, 1));
+    
+        const chest = await bot.openChest(chestBlock);
+        const carrotItems = chest.items().filter(item => item.name === 'carrot');
+    
+        let carrotsToRetrieve = amount;
+        for (const carrotItem of carrotItems) {
+            if (carrotsToRetrieve <= 0) break;
+            const carrotsAvailable = carrotItem.count;
+            const carrotsTaken = Math.min(carrotsAvailable, carrotsToRetrieve);
+            await chest.withdraw(carrotItem.type, null, carrotsTaken);
+            carrotsToRetrieve -= carrotsTaken;
+        }
+    
+        if (carrotsToRetrieve > 0) {
+            bot.chat(`Not enough carrots in the chest. Retrieved ${amount - carrotsToRetrieve} carrots.`);
+        } else {
+            bot.chat(`Retrieved ${amount} carrots from the chest.`);
+        }
+        await chest.close();
+    
+        // Step 2: Equip carrot to main hand
+        const carrotItem = bot.inventory.findInventoryItem(mcData.itemsByName.carrot.id, null);
+        if (carrotItem) {
+            await bot.equip(carrotItem, 'hand');
+        } else {
+            bot.chat("No carrots found in inventory.");
+            return;
+        }
+    
+        // Step 3: Use nearby composter to create bone meal
+        const composterBlockId = mcData.blocksByName.composter.id;
+        const composterPositions = bot.findBlocks({
+            matching: composterBlockId,
+            maxDistance: 9,
+            count: 1
+        });
+    
+        if (composterPositions.length === 0) {
+            bot.chat("No nearby composter found to create bone meal.");
+            return;
+        }
+    
+        const composterPos = composterPositions[0];
+        const composterBlock = bot.blockAt(composterPos);
+    
+        await bot.pathfinder.goto(new GoalNear(composterPos.x, composterPos.y, composterPos.z, 1));
+    
+        // Look at the composter using relative angles
+        const dx = composterPos.x - bot.entity.position.x;
+        const dz = composterPos.z - bot.entity.position.z;
+        const yaw = Math.atan2(dz, dx) * (180 / Math.PI);
+        const pitch = -Math.atan2(composterPos.y - bot.entity.position.y, Math.sqrt(dx * dx + dz * dz)) * (180 / Math.PI);
+        await bot.look(yaw, pitch);
+    
+        // Simulate right-clicking on the composter
+        await bot.activateBlock(composterBlock);
+    
+        for (let i = 0; i < amount; i++) {
+            await bot.activateBlock(composterBlock);
+            await sleep(1000); // Wait for the composter to process
+        }
+    
+        bot.chat(`Added ${amount} carrots to the composter.`);
+    }        
 
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
