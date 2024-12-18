@@ -89,49 +89,75 @@ function createBot() {
 
     async function harvestCarrots() {
         const carrotBlockId = mcData.blocksByName.carrots.id;
-
+        const boneMealItemId = mcData.itemsByName.bone_meal.id;
+    
         while (true) {
             const carrots = bot.findBlocks({
-                matching: block => block.type === carrotBlockId && block.metadata === 7,
+                matching: block => block.type === carrotBlockId,
                 maxDistance: 7,
                 count: 50
             });
-
+    
             if (carrots.length === 0) {
-                bot.chat("No fully grown carrots found. Stopping farming...");
+                bot.chat("No carrots found. Stopping farming...");
                 await storeCarrots();
                 break;
             }
-
+    
             for (const carrotPos of carrots) {
                 const block = bot.blockAt(carrotPos);
-                if (block.metadata !== 7) continue;
 
-                await bot.pathfinder.goto(new GoalNear(carrotPos.x, carrotPos.y, carrotPos.z, 1));
-                await bot.dig(block);
-
-                const carrotItem = bot.inventory.findInventoryItem(mcData.itemsByName.carrot.id);
-                if (carrotItem) {
-                    await bot.equip(carrotItem, 'hand');
-                    const blockBelow = bot.blockAt(carrotPos.offset(0, -1, 0));
-                    if (blockBelow?.name === 'farmland') {
-                        try {
-                            await bot.placeBlock(blockBelow, new Vec3(0, 1, 0), { timeout: 10000 });
-                        } catch (err) {
-                            if (err.message.includes('Event') && err.message.includes('did not fire within timeout')) {
-                                console.log('Timeout error occurred while placing block. Continuing...');
-                            } else {
-                                console.error('Error placing block:', err);
+                if (block.metadata === 7) {
+                    await bot.pathfinder.goto(new GoalNear(carrotPos.x, carrotPos.y, carrotPos.z, 1));
+                    await bot.dig(block);
+    
+                    const carrotItem = bot.inventory.findInventoryItem(mcData.itemsByName.carrot.id);
+                    if (carrotItem) {
+                        await bot.equip(carrotItem, 'hand');
+                        const blockBelow = bot.blockAt(carrotPos.offset(0, -1, 0));
+                        if (blockBelow?.name === 'farmland') {
+                            try {
+                                await bot.placeBlock(blockBelow, new Vec3(0, 1, 0), { timeout: 10000 });
+                            } catch (err) {
+                                if (err.message.includes('Event') && err.message.includes('did not fire within timeout')) {
+                                    console.log('Timeout error occurred while placing block. Continuing...');
+                                } else {
+                                    console.error('Error placing block:', err);
+                                }
                             }
+                        } else {
+                            console.log("Cannot plant on this block. Need farmland!");
                         }
                     } else {
-                        console.log("Cannot plant on this block. Need farmland!");
+                        console.log("Bot don't have any carrots to plant!");
                     }
                 } else {
-                    console.log("Bot don't have any carrots to plant!");
-                }
-            }
+                    const boneMealItem = bot.inventory.findInventoryItem(boneMealItemId);
+                    if (boneMealItem) {
+                      await bot.pathfinder.goto(new GoalNear(carrotPos.x, carrotPos.y, carrotPos.z, 1));
+                      await bot.equip(boneMealItem, 'hand');
+                  
+                      await bot.lookAt(carrotPos.offset(0.5, 0.5, 0.5));
 
+                      let block = bot.blockAt(carrotPos);
+                  
+                      while (block.metadata < 7) {
+                        await bot.activateBlock(block);
+                        await bot.waitForTicks(10);
+                        const updatedBlock = bot.blockAt(carrotPos);
+                        if (updatedBlock.metadata === block.metadata) {
+                          console.log("Bone meal had no effect. Stopping growth.");
+                          break;
+                        }
+                        block = updatedBlock;
+                      }
+                      console.log("Crop is fully grown.");
+                    } else {
+                      console.log("No bone meal available to grow carrots.");
+                    }
+                }                  
+            }
+    
             await sleep(1000);
         }
     }
