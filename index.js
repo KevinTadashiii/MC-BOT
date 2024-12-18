@@ -259,7 +259,6 @@ function createBot() {
     }
 
     async function manageCarrotsAndCompost(amount) {
-        // Step 1: Open nearby chests and retrieve carrots
         const chestBlockId = mcData.blocksByName.chest.id;
         const chestPositions = bot.findBlocks({
             matching: chestBlockId,
@@ -296,7 +295,6 @@ function createBot() {
         }
         await chest.close();
     
-        // Step 2: Equip carrot to main hand
         const carrotItem = bot.inventory.findInventoryItem(mcData.itemsByName.carrot.id, null);
         if (carrotItem) {
             await bot.equip(carrotItem, 'hand');
@@ -304,8 +302,7 @@ function createBot() {
             bot.chat("No carrots found in inventory.");
             return;
         }
-    
-        // Step 3: Use nearby composter to create bone meal
+
         const composterBlockId = mcData.blocksByName.composter.id;
         const composterPositions = bot.findBlocks({
             matching: composterBlockId,
@@ -323,19 +320,17 @@ function createBot() {
     
         await bot.pathfinder.goto(new GoalNear(composterPos.x, composterPos.y, composterPos.z, 1));
     
-        // Look at the composter using relative angles
         const dx = composterPos.x - bot.entity.position.x;
         const dz = composterPos.z - bot.entity.position.z;
         const yaw = Math.atan2(dz, dx) * (180 / Math.PI);
         const pitch = -Math.atan2(composterPos.y - bot.entity.position.y, Math.sqrt(dx * dx + dz * dz)) * (180 / Math.PI);
         await bot.look(yaw, pitch);
     
-        // Simulate right-clicking on the composter
         await bot.activateBlock(composterBlock);
     
         for (let i = 0; i < amount; i++) {
             await bot.activateBlock(composterBlock);
-            await sleep(1000); // Wait for the composter to process
+            await sleep(1000);
         }
     
         bot.chat(`Added ${amount} carrots to the composter.`);
