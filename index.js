@@ -276,9 +276,19 @@ function createBot() {
     
         await bot.pathfinder.goto(new GoalNear(chestPos.x, chestPos.y, chestPos.z, 1));
     
-        const chest = await bot.openChest(chestBlock);
-        const carrotItems = chest.items().filter(item => item.name === 'carrot');
+        const chest = await bot.openContainer(chestBlock);
+        const carrotItems = chest.containerItems().filter(item => item.name === 'carrot');
     
+        // Calculate total carrots available in the chest
+        const totalCarrotsInChest = carrotItems.reduce((sum, item) => sum + item.count, 0);
+    
+        if (totalCarrotsInChest < amount) {
+            bot.chat(`Not enough carrots in the chest. Available: ${totalCarrotsInChest}, required: ${amount}.`);
+            chest.close();
+            return;
+        }
+    
+        // Retrieve the specified amount of carrots from the chest
         let carrotsToRetrieve = amount;
         for (const carrotItem of carrotItems) {
             if (carrotsToRetrieve <= 0) break;
@@ -288,21 +298,17 @@ function createBot() {
             carrotsToRetrieve -= carrotsTaken;
         }
     
-        if (carrotsToRetrieve > 0) {
-            bot.chat(`Not enough carrots in the chest. Retrieved ${amount - carrotsToRetrieve} carrots.`);
-        } else {
-            bot.chat(`Retrieved ${amount} carrots from the chest.`);
-        }
-        await chest.close();
+        bot.chat(`Retrieved ${amount} carrots from the chest.`);
+        chest.close();
     
         const carrotItem = bot.inventory.findInventoryItem(mcData.itemsByName.carrot.id, null);
         if (carrotItem) {
             await bot.equip(carrotItem, 'hand');
         } else {
-            bot.chat("No carrots found in inventory.");
+            bot.chat("No carrots found in inventory after retrieval.");
             return;
         }
-
+    
         const composterBlockId = mcData.blocksByName.composter.id;
         const composterPositions = bot.findBlocks({
             matching: composterBlockId,
@@ -322,19 +328,17 @@ function createBot() {
     
         const dx = composterPos.x - bot.entity.position.x;
         const dz = composterPos.z - bot.entity.position.z;
-        const yaw = Math.atan2(dz, dx) * (180 / Math.PI);
-        const pitch = -Math.atan2(composterPos.y - bot.entity.position.y, Math.sqrt(dx * dx + dz * dz)) * (180 / Math.PI);
+        const yaw = Math.atan2(dz, dx);
+        const pitch = -Math.atan2(composterPos.y - bot.entity.position.y, Math.sqrt(dx * dx + dz * dz));
         await bot.look(yaw, pitch);
-    
-        await bot.activateBlock(composterBlock);
     
         for (let i = 0; i < amount; i++) {
             await bot.activateBlock(composterBlock);
-            await sleep(1000);
+            await sleep(1000); // Ensure there's a pause between each activation
         }
     
         bot.chat(`Added ${amount} carrots to the composter.`);
-    }        
+    }               
 
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
