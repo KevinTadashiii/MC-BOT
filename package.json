@@ -1,0 +1,19 @@
+{
+  "name": "MC BOT",
+  "version": "1.0.0",
+  "description": "A Minecraft BOT",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "KevinTadashiii",
+  "license": "ISC",
+  "dependencies": {
+    "minecraft-data": "^3.80.0",
+    "mineflayer": "^4.23.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "vec3": "^0.1.10"
+  }
+}
