@@ -16,7 +16,7 @@ function createBot() {
 
     bot.once('spawn', () => {
         console.log('Bot joined the server!');
-        bot.chat("Hello World!");
+        bot.chat("Hello, I do farming!");
 
         const defaultMove = new Movements(bot, mcData);
         bot.pathfinder.setMovements(defaultMove);
@@ -98,7 +98,7 @@ function createBot() {
             });
 
             if (carrots.length === 0) {
-                bot.chat("No fully grown carrots found. Stopping farming.");
+                bot.chat("No fully grown carrots found. Stopping farming...");
                 await storeCarrots();
                 break;
             }
@@ -128,7 +128,7 @@ function createBot() {
                         console.log("Cannot plant on this block. Need farmland!");
                     }
                 } else {
-                    console.log("I don't have any carrots to plant!");
+                    console.log("Bot don't have any carrots to plant!");
                 }
             }
 
@@ -137,7 +137,7 @@ function createBot() {
     }
 
     async function storeCarrots() {
-        bot.chat("Storing carrots into nearby chest!");
+        bot.chat("Storing carrots into nearby chest...");
         const chestBlockId = mcData.blocksByName.chest.id;
     
         const chestPositions = bot.findBlocks({
