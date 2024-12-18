@@ -39,10 +39,36 @@ function createBot() {
             case "!store":
                 await storeCarrots();
                 break;
+            case "!inventory":
+                printInventory();
+                break;
             default:
                 break;
         }
     });
+
+    function printInventory() {
+        const inventoryItems = bot.inventory.items();
+        if (inventoryItems.length === 0) {
+            bot.chat("My inventory is empty.");
+            return;
+        }
+
+        const groupedItems = inventoryItems.reduce((acc, item) => {
+            if (acc[item.name]) {
+                acc[item.name] += item.count;
+            } else {
+                acc[item.name] = item.count;
+            }
+            return acc;
+        }, {});
+
+        const inventoryList = Object.entries(groupedItems)
+            .map(([name, count]) => `${name} x${count}`)
+            .join(', ');
+
+        bot.chat(`Inventory: ${inventoryList}`);
+    }
 
     async function comeToPlayer(username) {
         bot.chat("Okay, I'm coming!");
@@ -113,38 +139,50 @@ function createBot() {
     async function storeCarrots() {
         bot.chat("Storing carrots into nearby chest!");
         const chestBlockId = mcData.blocksByName.chest.id;
-
+    
         const chestPositions = bot.findBlocks({
             matching: chestBlockId,
             maxDistance: 9,
             count: 1
         });
-
-        if (chestPositions.length === 0) {
+    
+        if (!chestPositions.length) {
             bot.chat("No nearby chest found to store carrots.");
             return;
         }
-
+    
         const chestPos = chestPositions[0];
         const chestBlock = bot.blockAt(chestPos);
-
+    
         await bot.pathfinder.goto(new GoalNear(chestPos.x, chestPos.y, chestPos.z, 1));
-
+    
         const chest = await bot.openChest(chestBlock);
         const carrotItems = bot.inventory.items().filter(item => item.name === 'carrot');
-
-        if (carrotItems.length === 0) {
+    
+        if (!carrotItems.length) {
             bot.chat("No carrots found in my inventory to store.");
             await chest.close();
             return;
         }
-
+    
+        const totalCarrots = carrotItems.reduce((sum, item) => sum + item.count, 0);
+        const carrotsToStore = totalCarrots - 5;
+    
+        if (carrotsToStore <= 0) {
+            bot.chat("I need to keep at least 5 carrots in my inventory.");
+            await chest.close();
+            return;
+        }
+    
         let totalCarrotsStored = 0;
         for (const carrotItem of carrotItems) {
-            await chest.deposit(carrotItem.type, null, carrotItem.count);
-            totalCarrotsStored += carrotItem.count;
+            const carrotsToDeposit = Math.min(carrotItem.count, carrotsToStore - totalCarrotsStored);
+            await chest.deposit(carrotItem.type, null, carrotsToDeposit);
+            totalCarrotsStored += carrotsToDeposit;
+    
+            if (totalCarrotsStored >= carrotsToStore) break;
         }
-
+    
         bot.chat(`Stored ${totalCarrotsStored} carrots into the chest.`);
         await chest.close();
     }
