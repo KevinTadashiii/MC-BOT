@@ -159,6 +159,7 @@ function createBot() {
     
             if (!boneMealAvailable && !fullyGrownCarrotFound) {
                 bot.chat("No bone meal and no fully grown carrots left. Stopping farming...");
+                await collectDroppedCarrots();
                 await storeCarrots();
                 break;
             }
@@ -166,6 +167,31 @@ function createBot() {
             await sleep(1000);
         }
     }
+
+    async function collectDroppedCarrots() {
+        bot.chat("Searching for dropped carrots...");
+        const carrotItemId = mcData.itemsByName.carrot.id;
+    
+        const droppedCarrots = Object.values(bot.entities).filter(entity =>
+            entity.displayName === 'Item' && entity.metadata[8]?.itemId === carrotItemId
+        );
+    
+        if (droppedCarrots.length === 0) {
+            bot.chat("No dropped carrots found nearby.");
+            return;
+        }
+    
+        for (const carrot of droppedCarrots) {
+            const { x, y, z } = carrot.position;
+            const goal = new GoalNear(x, y, z, 1);
+            await bot.pathfinder.goto(goal);
+    
+            // Wait for the bot to collect the dropped item
+            await sleep(500);
+        }
+    
+        bot.chat("Collected all nearby dropped carrots.");
+    }        
 
     async function storeCarrots() {
         const chestBlockId = mcData.blocksByName.chest.id;
