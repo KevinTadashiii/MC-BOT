@@ -201,7 +201,6 @@ function createBot() {
             const goal = new GoalNear(x, y, z, 1);
             await bot.pathfinder.goto(goal);
     
-            // Wait for the bot to collect the dropped item
             await sleep(500);
         }
     
@@ -279,7 +278,6 @@ function createBot() {
         const chest = await bot.openContainer(chestBlock);
         const carrotItems = chest.containerItems().filter(item => item.name === 'carrot');
     
-        // Calculate total carrots available in the chest
         const totalCarrotsInChest = carrotItems.reduce((sum, item) => sum + item.count, 0);
     
         if (totalCarrotsInChest < amount) {
@@ -288,7 +286,6 @@ function createBot() {
             return;
         }
     
-        // Retrieve the specified amount of carrots from the chest
         let carrotsToRetrieve = amount;
         for (const carrotItem of carrotItems) {
             if (carrotsToRetrieve <= 0) break;
@@ -334,7 +331,7 @@ function createBot() {
     
         for (let i = 0; i < amount; i++) {
             await bot.activateBlock(composterBlock);
-            await sleep(1000); // Ensure there's a pause between each activation
+            await sleep(1000);
         }
     
         bot.chat(`Added ${amount} carrots to the composter.`);
