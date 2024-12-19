@@ -185,14 +185,11 @@ function createBot() {
                 }
                 block = updatedBlock;
             }
-            console.log("Crop is fully grown.");
         } else {
-            console.log("No bone meal available to grow carrots.");
         }
     }
 
     async function collectDroppedCarrots() {
-        bot.chat("Searching for dropped carrots...");
         const carrotItemId = mcData.itemsByName.carrot.id;
 
         const droppedCarrots = Object.values(bot.entities).filter(entity =>
@@ -257,24 +254,24 @@ function createBot() {
     async function manageCarrotsAndCompost(amount) {
         const chestBlockId = mcData.blocksByName.chest.id;
         const chestPos = findNearestBlock(chestBlockId);
-
+    
         if (!chestPos) {
             bot.chat("No nearby chest found to retrieve carrots.");
             return;
         }
-
+    
         await bot.pathfinder.goto(new GoalNear(chestPos.x, chestPos.y, chestPos.z, 1));
         const chest = await bot.openContainer(bot.blockAt(chestPos));
         const carrotItems = chest.containerItems().filter(item => item.name === 'carrot');
-
+    
         const totalCarrotsInChest = carrotItems.reduce((sum, item) => sum + item.count, 0);
-
+    
         if (totalCarrotsInChest < amount) {
             bot.chat(`Not enough carrots in the chest. Available: ${totalCarrotsInChest}, required: ${amount}.`);
             chest.close();
             return;
         }
-
+    
         let carrotsToRetrieve = amount;
         for (const carrotItem of carrotItems) {
             if (carrotsToRetrieve <= 0) break;
@@ -282,10 +279,10 @@ function createBot() {
             await chest.withdraw(carrotItem.type, null, carrotsTaken);
             carrotsToRetrieve -= carrotsTaken;
         }
-
+    
         bot.chat(`Retrieved ${amount} carrots from the chest.`);
         chest.close();
-
+    
         const carrotItem = bot.inventory.findInventoryItem(mcData.itemsByName.carrot.id, null);
         if (carrotItem) {
             await bot.equip(carrotItem, 'hand');
@@ -293,24 +290,63 @@ function createBot() {
             bot.chat("No carrots found in inventory after retrieval.");
             return;
         }
-
+    
         const composterBlockId = mcData.blocksByName.composter.id;
         const composterPos = findNearestBlock(composterBlockId);
-
+    
         if (!composterPos) {
             bot.chat("No nearby composter found to create bone meal.");
             return;
         }
-
+    
         await bot.pathfinder.goto(new GoalNear(composterPos.x, composterPos.y, composterPos.z, 1));
         await bot.lookAt(composterPos.offset(0.5, 0.5, 0.5));
-
-        for (let i = 0; i < amount; i++) {
-            await bot.activateBlock(bot.blockAt(composterPos));
-            await sleep(1000);
+    
+        let carrotsAdded = 0;
+        let retries = 0;
+        const maxRetries = 5;
+    
+        while (carrotsAdded < amount) {
+            const composterBlock = bot.blockAt(composterPos);
+    
+            if (composterBlock.metadata === 7) {
+                console.log("Composter is full. Waiting for bone meal to be produced...");
+                await waitForComposterToProduceBoneMeal(composterPos);
+            } else if (composterBlock.metadata === 8) {
+                await bot.activateBlock(composterBlock);
+                console.log("Composter is full with bone meal. Resuming adding carrots...");
+            } else {
+                try {
+                    await bot.activateBlock(composterBlock);
+                    carrotsAdded++;
+                    retries = 0; 
+                } catch (err) {
+                    console.error('Failed to add carrot to composter:', err);
+                    retries++;
+                    if (retries >= maxRetries) {
+                        bot.chat("Failed to add carrot after multiple retries.");
+                        break;
+                    }
+                }
+            }
+    
+            await sleep(300);
         }
-
-        bot.chat(`Added ${amount} carrots to the composter.`);
+    
+        if (carrotsAdded === amount) {
+            bot.chat(`Successfully added ${amount} carrots to the composter.`);
+        } else {
+            bot.chat(`Failed to add all carrots to the composter. Added ${carrotsAdded} out of ${amount}.`);
+        }
+    }
+    
+    async function waitForComposterToProduceBoneMeal(composterPos) {
+        let composterBlock = bot.blockAt(composterPos);
+    
+        while (composterBlock.metadata === 7) {
+            await sleep(50);
+            composterBlock = bot.blockAt(composterPos);
+        }
     }
 
     function findNearestBlock(blockId) {
