@@ -1,7 +1,7 @@
 {
-  "name": "MC BOT",
+  "name": "mc-bot",
   "version": "1.0.0",
-  "description": "A Minecraft BOT",
+  "description": "A Minecraft bot made with mineflayer.",
   "main": "index.js",
   "scripts": {
     "dev": "node --watch index.js",
@@ -9,7 +9,11 @@
   },
   "keywords": [],
   "author": "KevinTadashiii",
-  "license": "ISC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KevinTadashiii/MC-BOT.git"
+  },
   "dependencies": {
     "minecraft-data": "^3.80.0",
     "mineflayer": "^4.23.0",
