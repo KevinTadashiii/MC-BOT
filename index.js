@@ -23,14 +23,7 @@ function createBot() {
         const defaultMove = new Movements(bot, mcData);
         bot.pathfinder.setMovements(defaultMove);
 
-        bot.cmd.registerCommand('composter', async (sender, flags, args) => {
-            const amount = parseInt(args[0]);
-            if (isNaN(amount) || amount <= 0) {
-                bot.chat("Please specify a valid number of carrots.");
-                return;
-            }
-            await manageCarrotsAndCompost(amount);
-        }, 'Manage carrots and compost', 'composter <amount>');
+        registerCommands();
     });
 
     bot.on('chat', async (username, message) => {
@@ -62,6 +55,17 @@ function createBot() {
         }
     });
 
+    function registerCommands() {
+        bot.cmd.registerCommand('composter', async (sender, flags, args) => {
+            const amount = parseInt(args[0]);
+            if (isNaN(amount) || amount <= 0) {
+                bot.chat("Please specify a valid number of carrots.");
+                return;
+            }
+            await manageCarrotsAndCompost(amount);
+        }, 'Manage carrots and compost', 'composter <amount>');
+    }
+
     function printInventory() {
         const inventoryItems = bot.inventory.items();
         if (inventoryItems.length === 0) {
@@ -70,11 +74,7 @@ function createBot() {
         }
 
         const groupedItems = inventoryItems.reduce((acc, item) => {
-            if (acc[item.name]) {
-                acc[item.name] += item.count;
-            } else {
-                acc[item.name] = item.count;
-            }
+            acc[item.name] = (acc[item.name] || 0) + item.count;
             return acc;
         }, {});
 
@@ -105,199 +105,187 @@ function createBot() {
     async function harvestCarrots() {
         const carrotBlockId = mcData.blocksByName.carrots.id;
         const boneMealItemId = mcData.itemsByName.bone_meal.id;
-    
-        while (true) {
-            const carrots = bot.findBlocks({
-                matching: block => block.type === carrotBlockId,
-                maxDistance: 7,
-                count: 50
-            });
 
+        while (true) {
+            const carrots = findCarrotBlocks();
             let boneMealAvailable = bot.inventory.findInventoryItem(boneMealItemId) !== null;
             let fullyGrownCarrotFound = false;
-    
+
             for (const carrotPos of carrots) {
                 const block = bot.blockAt(carrotPos);
-    
+
                 if (block.metadata === 7) {
                     fullyGrownCarrotFound = true;
-                    await bot.pathfinder.goto(new GoalNear(carrotPos.x, carrotPos.y, carrotPos.z, 1));
-                    await bot.dig(block);
-    
-                    const carrotItem = bot.inventory.findInventoryItem(mcData.itemsByName.carrot.id);
-                    if (carrotItem) {
-                        await bot.equip(carrotItem, 'hand');
-                        const blockBelow = bot.blockAt(carrotPos.offset(0, -1, 0));
-                        if (blockBelow?.name === 'farmland') {
-                            try {
-                                await bot.placeBlock(blockBelow, new Vec3(0, 1, 0), { timeout: 10000 });
-                            } catch (err) {
-                                if (err.message.includes('Event') && err.message.includes('did not fire within timeout')) {
-                                    console.log('Timeout error occurred while placing block. Continuing...');
-                                } else {
-                                    console.error('Error placing block:', err);
-                                }
-                            }
-                        } else {
-                            console.log("Cannot plant on this block. Need farmland!");
-                        }
-                    } else {
-                        console.log("Bot don't have any carrots to plant!");
-                    }
+                    await harvestCarrot(carrotPos);
                 } else if (boneMealAvailable) {
-                    const boneMealItem = bot.inventory.findInventoryItem(boneMealItemId);
-                    if (boneMealItem) {
-                        await bot.pathfinder.goto(new GoalNear(carrotPos.x, carrotPos.y, carrotPos.z, 1));
-                        await bot.equip(boneMealItem, 'hand');
-                    
-                        await bot.lookAt(carrotPos.offset(0.5, 0.5, 0.5));
-    
-                        let block = bot.blockAt(carrotPos);
-                    
-                        while (block.metadata < 7) {
-                            await bot.activateBlock(block);
-                            await bot.waitForTicks(10);
-                            const updatedBlock = bot.blockAt(carrotPos);
-                            if (updatedBlock.metadata === block.metadata) {
-                                console.log("Bone meal had no effect. Stopping growth.");
-                                break;
-                            }
-                            block = updatedBlock;
-                        }
-                        console.log("Crop is fully grown.");
-                    } else {
-                        console.log("No bone meal available to grow carrots.");
-                        boneMealAvailable = false;
-                    }
+                    await growCarrotWithBoneMeal(carrotPos, boneMealItemId);
                 }
             }
-    
+
             if (!boneMealAvailable && !fullyGrownCarrotFound) {
                 bot.chat("No bone meal and no fully grown carrots left. Stopping farming...");
                 await collectDroppedCarrots();
                 await storeCarrots();
                 break;
             }
-    
+
             await sleep(1000);
+        }
+    }
+
+    function findCarrotBlocks() {
+        const carrotBlockId = mcData.blocksByName.carrots.id;
+        return bot.findBlocks({
+            matching: block => block.type === carrotBlockId,
+            maxDistance: 7,
+            count: 50
+        });
+    }
+
+    async function harvestCarrot(carrotPos) {
+        await bot.pathfinder.goto(new GoalNear(carrotPos.x, carrotPos.y, carrotPos.z, 1));
+        await bot.dig(bot.blockAt(carrotPos));
+        await replantCarrot(carrotPos);
+    }
+
+    async function replantCarrot(carrotPos) {
+        const carrotItem = bot.inventory.findInventoryItem(mcData.itemsByName.carrot.id);
+        if (carrotItem) {
+            await bot.equip(carrotItem, 'hand');
+            const blockBelow = bot.blockAt(carrotPos.offset(0, -1, 0));
+            if (blockBelow?.name === 'farmland') {
+                try {
+                    await bot.placeBlock(blockBelow, new Vec3(0, 1, 0), { timeout: 10000 });
+                } catch (err) {
+                    console.error('Error placing block:', err);
+                }
+            } else {
+                console.log("Cannot plant on this block. Need farmland!");
+            }
+        } else {
+            console.log("Bot don't have any carrots to plant!");
+        }
+    }
+
+    async function growCarrotWithBoneMeal(carrotPos, boneMealItemId) {
+        const boneMealItem = bot.inventory.findInventoryItem(boneMealItemId);
+        if (boneMealItem) {
+            await bot.pathfinder.goto(new GoalNear(carrotPos.x, carrotPos.y, carrotPos.z, 1));
+            await bot.equip(boneMealItem, 'hand');
+            await bot.lookAt(carrotPos.offset(0.5, 0.5, 0.5));
+
+            let block = bot.blockAt(carrotPos);
+            while (block.metadata < 7) {
+                await bot.activateBlock(block);
+                await bot.waitForTicks(10);
+                const updatedBlock = bot.blockAt(carrotPos);
+                if (updatedBlock.metadata === block.metadata) {
+                    console.log("Bone meal had no effect. Stopping growth.");
+                    break;
+                }
+                block = updatedBlock;
+            }
+            console.log("Crop is fully grown.");
+        } else {
+            console.log("No bone meal available to grow carrots.");
         }
     }
 
     async function collectDroppedCarrots() {
         bot.chat("Searching for dropped carrots...");
         const carrotItemId = mcData.itemsByName.carrot.id;
-    
+
         const droppedCarrots = Object.values(bot.entities).filter(entity =>
             entity.displayName === 'Item' && entity.metadata[8]?.itemId === carrotItemId
         );
-    
+
         if (droppedCarrots.length === 0) {
             bot.chat("No dropped carrots found nearby.");
             return;
         }
-    
+
         for (const carrot of droppedCarrots) {
             const { x, y, z } = carrot.position;
             const goal = new GoalNear(x, y, z, 1);
             await bot.pathfinder.goto(goal);
-    
             await sleep(500);
         }
-    
+
         bot.chat("Collected all nearby dropped carrots.");
-    }        
+    }
 
     async function storeCarrots() {
         const chestBlockId = mcData.blocksByName.chest.id;
-    
-        const chestPositions = bot.findBlocks({
-            matching: chestBlockId,
-            maxDistance: 9,
-            count: 1
-        });
-    
-        if (!chestPositions.length) {
+        const chestPos = findNearestBlock(chestBlockId);
+
+        if (!chestPos) {
             bot.chat("No nearby chest found to store carrots.");
             return;
         }
-    
-        const chestPos = chestPositions[0];
-        const chestBlock = bot.blockAt(chestPos);
-    
+
         await bot.pathfinder.goto(new GoalNear(chestPos.x, chestPos.y, chestPos.z, 1));
-    
-        const chest = await bot.openChest(chestBlock);
+        const chest = await bot.openChest(bot.blockAt(chestPos));
         const carrotItems = bot.inventory.items().filter(item => item.name === 'carrot');
-    
+
         if (!carrotItems.length) {
             bot.chat("No carrots found in my inventory to store.");
             await chest.close();
             return;
         }
-    
+
         const totalCarrots = carrotItems.reduce((sum, item) => sum + item.count, 0);
         const carrotsToStore = totalCarrots - 5;
-    
+
         if (carrotsToStore <= 0) {
             bot.chat("I need to keep at least 5 carrots in my inventory.");
             await chest.close();
             return;
         }
-    
+
         let totalCarrotsStored = 0;
         for (const carrotItem of carrotItems) {
             const carrotsToDeposit = Math.min(carrotItem.count, carrotsToStore - totalCarrotsStored);
             await chest.deposit(carrotItem.type, null, carrotsToDeposit);
             totalCarrotsStored += carrotsToDeposit;
-    
             if (totalCarrotsStored >= carrotsToStore) break;
         }
-    
+
         bot.chat(`Stored ${totalCarrotsStored} carrots into the chest.`);
         await chest.close();
     }
 
     async function manageCarrotsAndCompost(amount) {
         const chestBlockId = mcData.blocksByName.chest.id;
-        const chestPositions = bot.findBlocks({
-            matching: chestBlockId,
-            maxDistance: 9,
-            count: 1
-        });
-    
-        if (chestPositions.length === 0) {
+        const chestPos = findNearestBlock(chestBlockId);
+
+        if (!chestPos) {
             bot.chat("No nearby chest found to retrieve carrots.");
             return;
         }
-    
-        const chestPos = chestPositions[0];
-        const chestBlock = bot.blockAt(chestPos);
-    
+
         await bot.pathfinder.goto(new GoalNear(chestPos.x, chestPos.y, chestPos.z, 1));
-    
-        const chest = await bot.openContainer(chestBlock);
+        const chest = await bot.openContainer(bot.blockAt(chestPos));
         const carrotItems = chest.containerItems().filter(item => item.name === 'carrot');
-    
+
         const totalCarrotsInChest = carrotItems.reduce((sum, item) => sum + item.count, 0);
-    
+
         if (totalCarrotsInChest < amount) {
             bot.chat(`Not enough carrots in the chest. Available: ${totalCarrotsInChest}, required: ${amount}.`);
             chest.close();
             return;
         }
-    
+
         let carrotsToRetrieve = amount;
         for (const carrotItem of carrotItems) {
             if (carrotsToRetrieve <= 0) break;
-            const carrotsAvailable = carrotItem.count;
-            const carrotsTaken = Math.min(carrotsAvailable, carrotsToRetrieve);
+            const carrotsTaken = Math.min(carrotItem.count, carrotsToRetrieve);
             await chest.withdraw(carrotItem.type, null, carrotsTaken);
             carrotsToRetrieve -= carrotsTaken;
         }
-    
+
         bot.chat(`Retrieved ${amount} carrots from the chest.`);
         chest.close();
-    
+
         const carrotItem = bot.inventory.findInventoryItem(mcData.itemsByName.carrot.id, null);
         if (carrotItem) {
             await bot.equip(carrotItem, 'hand');
@@ -305,37 +293,34 @@ function createBot() {
             bot.chat("No carrots found in inventory after retrieval.");
             return;
         }
-    
+
         const composterBlockId = mcData.blocksByName.composter.id;
-        const composterPositions = bot.findBlocks({
-            matching: composterBlockId,
-            maxDistance: 9,
-            count: 1
-        });
-    
-        if (composterPositions.length === 0) {
+        const composterPos = findNearestBlock(composterBlockId);
+
+        if (!composterPos) {
             bot.chat("No nearby composter found to create bone meal.");
             return;
         }
-    
-        const composterPos = composterPositions[0];
-        const composterBlock = bot.blockAt(composterPos);
-    
+
         await bot.pathfinder.goto(new GoalNear(composterPos.x, composterPos.y, composterPos.z, 1));
-    
-        const dx = composterPos.x - bot.entity.position.x;
-        const dz = composterPos.z - bot.entity.position.z;
-        const yaw = Math.atan2(dz, dx);
-        const pitch = -Math.atan2(composterPos.y - bot.entity.position.y, Math.sqrt(dx * dx + dz * dz));
-        await bot.look(yaw, pitch);
-    
+        await bot.lookAt(composterPos.offset(0.5, 0.5, 0.5));
+
         for (let i = 0; i < amount; i++) {
-            await bot.activateBlock(composterBlock);
+            await bot.activateBlock(bot.blockAt(composterPos));
             await sleep(1000);
         }
-    
+
         bot.chat(`Added ${amount} carrots to the composter.`);
-    }               
+    }
+
+    function findNearestBlock(blockId) {
+        const positions = bot.findBlocks({
+            matching: blockId,
+            maxDistance: 9,
+            count: 1
+        });
+        return positions.length ? positions[0] : null;
+    }
 
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
